@@ -1,0 +1,102 @@
+---
+title: "dsci_project_nirushanbhag"
+author: "Niru Shanbhag"
+date: "4/23/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+## FINAL PROJECT 
+
+
+dataset = https://www.kaggle.com/datasets/rodsaldanha/arketing-campaign/discussion/182997 
+
+```{r}
+#Preparing the data
+cust <- read.csv("/Users/nirushanbhag/Downloads/DSCI101/DSCI101/data/marketing_campaign.csv", sep = "\t")
+cust <- cust %>% filter(!is.na(Income)) #remove all the Incomes that are NA
+cust$Dt_Customer = dmy(cust$Dt_Customer)
+cust <- cust %>% mutate(income_bracket = 
+                  cut(Income, breaks = c(-Inf, 25000, 50000, 75000, 100000, 200000, 300000, 400000, 500000, 600000,700000), 
+                  include.lowest = FALSE, 
+                  labels = c("<25K", "25K-50K", "50K-75K", "75K-100K", "100K-200K", "200K-300K", "300K-400K", "400K-500K", "500K-600K", "600K-700K")), 
+                  no_offspring = Teenhome + Kidhome,
+                  month_of_enrollment = month(Dt_Customer), 
+                  year_at_enrollment= year(Dt_Customer),
+                  age_at_enrollment = year_at_enrollment - Year_Birth,
+                  age_bracket =
+                  cut(age_at_enrollment, breaks = c(-Inf, 19, 29, 39, 49, 59, 69, 79, 89, 99, Inf), labels = c("Teens", "20s", "30s", "40s", "50s", "60s", "70s", "80s", "90s", "100s")),
+                  total_amount_purchased = NumWebPurchases+NumCatalogPurchases+NumStorePurchases+NumDealsPurchases
+)
+
+```
+
+
+
+
+1a. Visualize the education level and mean amount purchased in a stacked bar chart, and color code by marital status  
+From this you can see that graduates make the most purchases, and they also have the most diverse income bracket. 
+```{r}
+cust %>% group_by(Education, income_bracket) %>% summarize(mean_amount_purchased = mean(total_amount_purchased)) %>% ggplot(aes(x = factor(Education, level = c("Basic", "2n Cycle", "Graduation", "Master", "PhD")), y = mean_amount_purchased, fill = income_bracket)) + geom_bar(stat = "identity") 
+```
+
+1b.Find the group within education, marital_status, and income that have the highest average amount purchased.  
+People in the bracket who have a PhD, are married, and are in the income bracket of 100-200K who have 1 kid have the highest average amount purchased. This makes sense because having a high degree and being married usually means you tend to have a stable source of income, since at least one partner is contributing to the income. Having a child at home also means you probably make more purchases
+
+```{r}
+cust %>% group_by(Education, Marital_Status, income_bracket, no_offspring) %>% summarize(mean_amount_purchased = mean(total_amount_purchased)) %>% arrange(-mean_amount_purchased)
+```
+
+2. Visualize the visits to purchase ratio based on the income bracket  
+
+
+It looks like for the most part, the median of visits to purchase ratio drastically decreases (meaning that they make more purchases than visits) as we go up the income bracket.  
+This link helped with getting rid of outliers and setting a limit on the y axis: https://stackoverflow.com/questions/5677885/ignore-outliers-in-ggplot2-boxplot 
+```{r}
+#any number greater than 1 means that they visited more than they purchased
+cust %>% mutate(visits_to_purchases_ratio = (NumWebVisitsMonth/(NumWebPurchases+NumCatalogPurchases+NumStorePurchases+NumDealsPurchases))) %>% filter(visits_to_purchases_ratio != "Inf") %>% ggplot(aes(y = visits_to_purchases_ratio)) + geom_boxplot(outlier.shape = NA) + scale_y_continuous(limits = c(0, 2)) + facet_wrap(~income_bracket)  
+```
+
+
+3. Visualize the age bracket and average number of recency (how many days pass between purchases). Do this again for income bracket.  
+
+The age bracket that has the highest recency, or number of days that pass between purchases, are people in their 70s and the bracket with the lowest recency are people in their 30s. But all brackets pretty much have around the same average recency. What about income bracket?  
+The income bracket that has the lowest recency, or number of days that pass between purchases, are people making 600K-700K, and  highest recency are people making <25K. 
+```{r}
+cust  %>% group_by(age_bracket) %>% summarize(average_recency = mean(Recency)) %>% arrange(-average_recency) %>% ggplot(aes(x = age_bracket, y = average_recency)) + geom_bar(stat = "identity")
+
+cust  %>% group_by(income_bracket) %>% summarize(average_recency = mean(Recency)) %>% arrange(-average_recency) %>% ggplot(aes(x = income_bracket, y = average_recency)) + geom_bar(stat = "identity")
+```
+
+4. Which education, marital_status, and income groups engage the most with marketing campaigns and which do not engage with marketing campaigns? 
+
+I measured this by summing the columns AcceptedCmp_[1,2,3,4,5] for each individual. The 1,2,3,4,5 represent which campaign they accepted (1st,2nd,3rd,4th, or 5th campaign). The value of the column is binary; 1 means they accepted and 0 means it was not accepted. If the individual had 0s across all of these columns, that means they did not engage in any market campaign at any point in time. If the total sum across the column was 1, that means they engaged in 1 market campaign. For each row, I added the values in  across the AcceptedCmp_[1,2,3,4,5]columns, and this represents how many times they engaged in all the marketing campaigns. 
+
+The income bracket 75-100K had the largest marketing campaign engagement "score", and the 600-700K had the lowest.
+```{r}
+cust %>% mutate(engagement_score = rowMeans(across(c(AcceptedCmp1, AcceptedCmp2, AcceptedCmp3, AcceptedCmp4, AcceptedCmp5))))  %>% group_by(income_bracket) %>% summarize(grouped_mean_engagement_sum = sum(engagement_score)) %>% arrange(-grouped_mean_engagement_sum)
+```
+
+5. Visualize the average number of purchases made for Fruit, Wine, Meat, Fish, Sweets, Gold for each income bracket  
+Meat is the product that is bought the most across all income brackets, and fruit and sweets is less popular
+```{r}
+cust %>% group_by(income_bracket) %>% summarise(across(c(MntFruits, MntMeatProducts, MntFishProducts, MntSweetProducts, MntGoldProds), mean, na.rm = TRUE))  %>% pivot_longer(cols = c(MntFruits, MntMeatProducts, MntFishProducts, MntSweetProducts, MntGoldProds), names_to = 'product', values_to = "mean_amount_bought")  %>%  ggplot(aes(x = income_bracket, y = mean_amount_bought, fill = product)) + geom_bar(stat = "identity", position = position_dodge())
+```
+  
+  
+6. Visualize the age at enrollment and the total amount of goods purchased, and color by marital status
+
+You can't really tell if there's a trend, but the peak of highest total amount purchased comes from middle aged people and most of the colors at the peak are 2n cycle, graduation, master, and PhD. 
+```{r}
+cust %>% ggplot(aes(x = age_at_enrollment, y = total_amount_purchased, color = Education)) + geom_point()
+```
